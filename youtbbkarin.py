@@ -68,6 +68,29 @@ def make_concat_playlist(video_paths):
 
 
 
+def resolve_youtube_live_url(source_url, log_callback):
+    """Resolve URL YouTube (watch/live) menjadi URL media langsung untuk FFmpeg."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "yt_dlp", "-g", "-f", "best[height<=720]/best", source_url],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        direct_url = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if not direct_url:
+            raise RuntimeError("yt-dlp tidak menghasilkan URL media.")
+        return direct_url
+    except FileNotFoundError:
+        raise RuntimeError("Python/yt-dlp tidak tersedia di environment.")
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or "").strip()[-1000:]
+        raise RuntimeError(f"Gagal mengambil stream YouTube: {detail}")
+    except Exception as e:
+        raise RuntimeError(str(e))
+
+
 def make_audio_playlist(audio_paths):
     """Buat playlist concat FFmpeg untuk MP3 1-5."""
     playlist = UPLOAD_DIR / "audio_playlist.txt"
@@ -77,12 +100,56 @@ def make_audio_playlist(audio_paths):
             f.write(f"file '{p}'\n")
     return str(playlist)
 
-def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, loop_playlist, log_callback):
+def run_ffmpeg(mode, video_paths, audio_paths, source_url, stream_key, is_shorts, loop_playlist, log_callback):
     global FFMPEG_PROCESS
 
     output_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
 
-    if mode == "Video + MP3":
+    if mode == "Re-stream Live YouTube":
+        if not source_url:
+            log_callback("ERROR: URL live YouTube harus diisi.")
+            return
+
+        log_callback("Mode: Re-stream Live YouTube")
+        log_callback(f"Sumber: {source_url}")
+        try:
+            direct_url = resolve_youtube_live_url(source_url, log_callback)
+        except Exception as e:
+            log_callback(f"ERROR: {e}")
+            return
+
+        cmd = [
+            "ffmpeg", "-hide_banner", "-re",
+            "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+            "-i", direct_url,
+        ]
+
+        if audio_paths:
+            audio_playlist = make_audio_playlist(audio_paths)
+            # Sumber video live dari channel lain dipakai sebagai video.
+            # MP3 sendiri menjadi audio utama dan di-loop 1 -> 5 -> 1...
+            cmd += [
+                "-stream_loop", "-1",
+                "-f", "concat", "-safe", "0", "-i", audio_playlist,
+                "-map", "0:v:0", "-map", "1:a:0",
+            ]
+            log_callback("MP3 sendiri aktif: 1 → 2 → 3 → 4 → 5 → kembali ke 1.")
+            log_callback("Audio dari live sumber diganti dengan MP3 sendiri.")
+        else:
+            cmd += ["-map", "0:v:0", "-map", "0:a:0?"]
+            log_callback("Tidak ada MP3 sendiri: audio dari live sumber diteruskan.")
+
+        cmd += [
+            "-c:v", "libx264", "-preset", "veryfast",
+            "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
+            "-g", "60", "-keyint_min", "60",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        ]
+        if is_shorts:
+            cmd += ["-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2"]
+        cmd += ["-f", "flv", output_url]
+
+    elif mode == "Video + MP3":
         if not video_paths or not audio_paths:
             log_callback("ERROR: Mode Video + MP3 membutuhkan 1 video dan minimal 1 MP3.")
             return
@@ -249,12 +316,13 @@ def main():
 
     mode = st.radio(
         "Pilih Mode Streaming",
-        ["4 Video Playlist", "Video + MP3"],
+        ["4 Video Playlist", "Video + MP3", "Re-stream Live YouTube"],
         horizontal=True,
     )
 
     selected_paths = []
     audio_paths = []
+    source_url = ""
 
     if mode == "4 Video Playlist":
         st.subheader("Upload Playlist — 4 Video")
@@ -287,6 +355,41 @@ def main():
                 st.write(f"{i}. {Path(path).name}")
         else:
             st.info("Belum ada video. Upload minimal 1 video untuk memulai streaming.")
+
+    elif mode == "Re-stream Live YouTube":
+        st.subheader("Re-stream Live YouTube")
+        st.caption("Masukkan URL live YouTube yang Anda berhak untuk menyiarkan ulang. Video live akan diteruskan ke channel Anda.")
+        source_url = st.text_input(
+            "URL Live YouTube Sumber",
+            placeholder="https://www.youtube.com/watch?v=...",
+            help="Gunakan live stream yang Anda miliki izinnya untuk di-re-stream."
+        )
+
+        st.markdown("**Opsional: gunakan MP3 sendiri**")
+        st.caption("Jika diisi, audio dari live sumber diganti dengan playlist MP3 1 → 5 → 1 terus-menerus. Jika kosong, audio sumber diteruskan.")
+        for slot in range(1, 6):
+            uploaded_audio = st.file_uploader(
+                f"MP3 {slot} (opsional)",
+                type=["mp3"],
+                key=f"restream_mp3_uploader_{slot}",
+            )
+            if uploaded_audio is not None:
+                audio_saved = save_uploaded_audio(uploaded_audio, slot)
+                st.success(f"MP3 {slot} siap: {uploaded_audio.name}")
+
+        for slot in range(1, 6):
+            candidates = sorted(
+                UPLOAD_DIR.glob(f"audio_{slot}_*.mp3"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                audio_paths.append(str(candidates[0]))
+
+        if audio_paths:
+            st.write("**MP3 sendiri aktif:**")
+            for i, path in enumerate(audio_paths, 1):
+                st.write(f"{i}. {Path(path).name}")
 
     else:
         st.subheader("Upload Video + MP3 — Playlist 5 MP3")
@@ -347,7 +450,7 @@ def main():
     loop_playlist = st.checkbox(
         "Ulangi playlist setelah video terakhir",
         value=True,
-        disabled=(mode == "Video + MP3"),
+        disabled=(mode in ["Video + MP3", "Re-stream Live YouTube"]),
         help="Mode Video + MP3 me-loop video dan MP3 terus-menerus.",
     )
 
@@ -367,7 +470,9 @@ def main():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("▶️ Mulai Streaming", disabled=streaming, use_container_width=True):
-            if not selected_paths:
+            if mode == "Re-stream Live YouTube" and not source_url:
+                st.error("URL live YouTube sumber harus diisi!")
+            elif mode != "Re-stream Live YouTube" and not selected_paths:
                 st.error("Upload video terlebih dahulu!")
             elif mode == "Video + MP3" and not audio_paths:
                 st.error("Upload minimal 1 file MP3 terlebih dahulu!")
@@ -377,7 +482,7 @@ def main():
                 st.session_state["logs"] = []
                 thread = threading.Thread(
                     target=run_ffmpeg,
-                    args=(mode, selected_paths, audio_paths, stream_key, is_shorts, loop_playlist, log_callback),
+                    args=(mode, selected_paths, audio_paths, source_url, stream_key, is_shorts, loop_playlist, log_callback),
                     daemon=True,
                 )
                 thread.start()
