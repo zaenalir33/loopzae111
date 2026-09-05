@@ -171,12 +171,12 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
-            "-r", "25",
+            "-r", "20",
             "-pix_fmt", "yuv420p",
             "-profile:v", "main",
             "-threads", "2",
-            "-b:v", "1800k",
-            "-maxrate", "1800k",
+            "-b:v", "2500k",
+            "-maxrate", "2500k",
             "-bufsize", "3600k",
             "-g", "50",
             "-keyint_min", "50",
@@ -197,10 +197,10 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
                 "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
             ]
         else:
-            # Batasi video landscape ke 720p agar encoding CPU Streamlit Cloud lebih ringan.
+            # Target video landscape hingga 1080p dengan 20fps dan preset ultrafast agar CPU tetap serendah mungkin.
             cmd += [
                 "-vf",
-                "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+                "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
             ]
 
         if duration_seconds:
@@ -257,12 +257,12 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-tune", "zerolatency",
-            "-r", "25",
+            "-r", "20",
             "-pix_fmt", "yuv420p",
             "-profile:v", "main",
             "-threads", "2",
-            "-b:v", "1800k",
-            "-maxrate", "1800k",
+            "-b:v", "2500k",
+            "-maxrate", "2500k",
             "-bufsize", "3600k",
             "-g", "50",
             "-keyint_min", "50",
@@ -450,7 +450,7 @@ def main():
 
     else:
         st.subheader("Upload Video + MP3 — Playlist 5 MP3")
-        st.caption("1 video di-loop terus + MP3 1 → 2 → 3 → 4 → 5. Mode hemat CPU untuk Streamlit Cloud: encoding 720p/25fps, preset ultrafast, dan bitrate lebih ringan.")
+        st.caption("1 video di-loop terus + MP3 1 → 2 → 3 → 4 → 5. Mode hemat CPU untuk Streamlit Cloud: encoding 1080p/20fps, preset ultrafast, dan bitrate CPU-efisien.")
         st.info("Tips: gunakan MP4 H.264 + AAC dan MP3 bitrate normal (128–320 kbps) agar perpindahan audio lebih lancar.")
 
         video_saved = None
