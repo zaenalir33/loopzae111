@@ -1,3 +1,3 @@
 streamlit
 ffmpeg-python
-static-ffmpeg
+ffmpeg-downloader
