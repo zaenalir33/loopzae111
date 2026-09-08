@@ -81,32 +81,27 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
         
-        # Susunan perintah FFmpeg yang sudah diperbaiki letak opsi reconnect-nya
-        if shorts_mode:
-            cmd = [
-                ffmpeg_bin, "-re", "-stream_loop", "-1",
-                "-i", target_video_path,
-                "-vf", "scale=720:1280",
-                "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
-                "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
-                "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
-                "-f", "flv", rtmp_url
-            ]
-        else:
-            cmd = [
-                ffmpeg_bin, "-re", "-stream_loop", "-1",
-                "-i", target_video_path,
-                "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
-                "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
-                "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
-                "-f", "flv", rtmp_url
-            ]
+        # Opsi video filter
+        vf_option = ["-vf", "scale=720:1280"] if shorts_mode else []
+
+        # Perintah FFmpeg yang diset agar stabil untuk RTMP Live YouTube
+        cmd = [
+            ffmpeg_bin, "-re", "-stream_loop", "-1",
+            "-i", target_video_path
+        ] + vf_option + [
+            "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
+            "-maxrate", "2500k", "-bufsize", "5000k", "-pix_fmt", "yuv420p",
+            "-g", "60", "-keyint_min", "60",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+            "-flvflags", "no_duration_filesize",
+            "-f", "flv", rtmp_url
+        ]
         
         thread = threading.Thread(target=run_ffmpeg, args=(cmd,), name="run_ffmpeg")
         add_script_run_ctx(thread)
         thread.start()
         
-        st.success("File berhasil diunggah & proses streaming berjalan di background!")
+        st.success("Proses streaming telah dijalankan di background!")
 
 st.divider()
 st.subheader("📋 Log Aktivitas Streaming")
