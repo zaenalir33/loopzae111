@@ -169,7 +169,7 @@ def start_process(cmd, mode):
         st.error("Streaming masih berjalan. Hentikan streaming sebelumnya terlebih dahulu.")
         return False
     LOG_FILE.write_text("Menjalankan perintah FFmpeg...\n" + " ".join(shlex.quote(x) for x in cmd) + "\n\n", encoding="utf-8")
-    with open(LOG_FILE, "a", buffering=1, encoding="utf-8") as log:
+    with open(LOG_FILE, "a", buffering=1) as log:
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
@@ -179,16 +179,6 @@ def start_process(cmd, mode):
         )
     st.session_state["pid"] = proc.pid
     st.session_state["mode"] = mode
-
-    # Give FFmpeg a moment to initialize the encoder/RTMP connection.
-    time.sleep(3)
-    rc = proc.poll()
-    if rc is not None:
-        read_logs()
-        st.session_state["pid"] = None
-        st.error(f"FFmpeg berhenti sendiri (exit code {rc}). Lihat log di bawah.")
-        return False
-
     return True
 
 
@@ -211,7 +201,7 @@ def encoding_args(shorts=False):
     args = [
         "-c:v", "libx264",
         "-preset", "ultrafast",
-        "-threads", "2",
+        "-threads", "1",
         "-r", "20",
         "-pix_fmt", "yuv420p",
         "-profile:v", "main",
@@ -224,9 +214,8 @@ def encoding_args(shorts=False):
         "-tune", "zerolatency",
         "-c:a", "aac",
         "-b:a", "128k",
-        "-ar", "44100",
+        "-ar", "48000",
         "-ac", "2",
-        "-af", "aresample=async=1:first_pts=0",
         "-f", "flv",
     ]
     if shorts:
@@ -304,7 +293,7 @@ if mode == "5 Video Playlist":
             if video_count == 1:
                 # Paling stabil untuk satu video: jangan lewat concat demuxer.
                 cmd = [
-                    FFMPEG, "-hide_banner", "-loglevel", "verbose", "-nostdin",
+                    FFMPEG, "-hide_banner", "-loglevel", "verbose",
                     "-re",
                     "-thread_queue_size", "512",
                 ]
@@ -318,8 +307,6 @@ if mode == "5 Video Playlist":
                     "-map", "0:a:0?",
                 ]
                 cmd += encoding_args(shorts) + [
-                    "-rtmp_live", "live",
-                    "-flvflags", "no_duration_filesize",
                     rtmp_url(stream_key),
                 ]
             else:
@@ -341,7 +328,7 @@ if mode == "5 Video Playlist":
                     loop_args = []
 
                 cmd = [
-                    FFMPEG, "-hide_banner", "-loglevel", "verbose", "-nostdin",
+                    FFMPEG, "-hide_banner", "-loglevel", "verbose",
                     "-re",
                     "-thread_queue_size", "512",
                     "-f", "concat", "-safe", "0",
@@ -351,8 +338,6 @@ if mode == "5 Video Playlist":
                     "-map", "0:a:0?",
                 ]
                 cmd += encoding_args(shorts) + [
-                    "-rtmp_live", "live",
-                    "-flvflags", "no_duration_filesize",
                     rtmp_url(stream_key),
                 ]
 
@@ -360,7 +345,7 @@ if mode == "5 Video Playlist":
                 cmd,
                 "1 Video" if video_count == 1 else "5 Video Playlist",
             ):
-                st.success("FFmpeg sudah berjalan. YouTube biasanya membutuhkan beberapa detik untuk menerima sinyal live.")
+                st.success("FFmpeg sudah dijalankan. Tunggu YouTube menerima sinyal live.")
 
 else:
     st.subheader("🎵 Video + MP3")
@@ -399,7 +384,7 @@ else:
                 audio_loop = []
 
             cmd = [
-                FFMPEG, "-hide_banner", "-loglevel", "verbose", "-nostdin",
+                FFMPEG, "-hide_banner", "-loglevel", "verbose",
                 "-re", "-thread_queue_size", "512", "-stream_loop", "-1", "-i", video_path,
                 "-re", "-thread_queue_size", "512", "-f", "concat", "-safe", "0",
             ] + audio_loop + ["-i", str(audio_playlist), "-map", "0:v:0", "-map", "1:a:0", "-shortest"]
