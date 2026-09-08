@@ -5,18 +5,23 @@ import static_ffmpeg
 import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 
-# 1. Inisialisasi biner ffmpeg secara otomatis tanpa butuh apt-get
+# 1. Inisialisasi biner ffmpeg secara otomatis di PATH
 static_ffmpeg.add_paths()
 
-# 2. Inisialisasi Session State
+# 2. Inisialisasi Session State di alur utama Streamlit
 if 'logs' not in st.session_state:
     st.session_state['logs'] = []
 
+if 'streaming' not in st.session_state:
+    st.session_state['streaming'] = False
+
 def log_callback(msg):
+    """Fungsi callback aman untuk memperbarui log di session_state."""
     if 'logs' in st.session_state:
         st.session_state['logs'].append(msg)
 
-def run_ffmpeg_command(cmd):
+def run_ffmpeg(cmd):
+    """Menjalankan perintah FFmpeg di background thread."""
     try:
         log_callback(f"Menjalankan: {' '.join(cmd)}")
         process = subprocess.Popen(
@@ -25,24 +30,52 @@ def run_ffmpeg_command(cmd):
             stderr=subprocess.STDOUT,
             universal_newlines=True
         )
+        
+        # Membaca output log FFmpeg secara real-time
         for line in process.stdout:
             log_callback(line.strip())
+            
         process.wait()
         log_callback("Streaming selesai atau dihentikan.")
     except Exception as e:
         log_callback(f"Error: {e}")
+    finally:
+        if 'streaming' in st.session_state:
+            st.session_state['streaming'] = False
 
-# Interface Streamlit
-st.title("YouTube Live Streamer")
+# --- Tampilan Antarmuka Streamlit ---
+st.set_page_config(page_title="YouTube Live Streamer", layout="wide")
+st.title("📹 YouTube Auto Live Streamer")
 
-video_file = st.text_input("Nama File Video", "video.mp4")
-stream_key = st.text_input("Stream Key YouTube", type="password")
+st.markdown("""
+Aplikasi ini menggunakan **FFmpeg** untuk melakukan streaming video loop ke YouTube Live secara otomatis.
+""")
 
-if st.button("Mulai Live Stream"):
+# Input Form
+col1, col2 = st.columns(2)
+
+with col1:
+    video_file = st.text_input("Nama File Video", "video.mp4", help="Pastikan file video berada di folder repositori yang sama.")
+
+with col2:
+    stream_key = st.text_input("YouTube Stream Key", type="password", help="Masukkan Stream Key dari Dashboard YouTube Live Anda.")
+
+# Tombol Eksekusi
+col_btn1, col_btn2 = st.columns([1, 4])
+
+with col_btn1:
+    start_btn = st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming'])
+
+if start_btn:
     if not stream_key:
-        st.error("Masukkan Stream Key terlebih dahulu!")
+        st.error("Harap masukkan Stream Key YouTube terlebih dahulu!")
+    elif not os.path.exists(video_file):
+        st.error(f"File video '{video_file}' tidak ditemukan di repositori!")
     else:
+        st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
+        
+        # Perintah FFmpeg untuk streaming loop
         cmd = [
             "ffmpeg", "-re", "-stream_loop", "-1", "-i", video_file,
             "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
@@ -51,13 +84,22 @@ if st.button("Mulai Live Stream"):
             "-f", "flv", rtmp_url
         ]
         
-        # Jalankan eksekusi di thread terpisah dengan ScriptRunContext
-        t = threading.Thread(target=run_ffmpeg_command, args=(cmd,), name="run_ffmpeg")
-        add_script_run_ctx(t)
-        t.start()
-        st.success("Proses streaming telah dimulai di background!")
+        # Jalankan thread dengan ScriptRunContext agar aman di Streamlit
+        thread = threading.Thread(target=run_ffmpeg, args=(cmd,), name="run_ffmpeg")
+        add_script_run_ctx(thread)
+        thread.start()
+        
+        st.success("Proses streaming telah dijalankan di background!")
 
-# Menampilkan Logs
-st.subheader("Log Output")
+# Area Log Output
+st.divider()
+st.subheader("📋 Log Aktivitas Streaming")
+
+if st.button("🔄 Perbarui Log"):
+    st.rerun()
+
+# Menampilkan isi log
 if st.session_state['logs']:
-    st.code("\n".join(st.session_state['logs']))
+    st.code("\n".join(st.session_state['logs'][-50:]), language="bash")
+else:
+    st.info("Belum ada log aktivitas.")
