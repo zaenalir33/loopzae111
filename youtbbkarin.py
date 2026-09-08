@@ -8,7 +8,6 @@ import urllib.parse
 from pathlib import Path
 
 try:
-    import imageio_ffmpeg
 except ImportError:
     imageio_ffmpeg = None
 
@@ -33,7 +32,7 @@ def get_ffmpeg_binary() -> str:
     """Return a working FFmpeg binary without relying on packages.txt/apt."""
     if imageio_ffmpeg is not None:
         try:
-            path = imageio_ffmpeg.get_ffmpeg_exe()
+            path = imageio_ffmpeg."ffmpeg"
             if path and Path(path).exists():
                 return path
         except Exception:
@@ -43,7 +42,22 @@ def get_ffmpeg_binary() -> str:
     return "ffmpeg"
 
 
-FFMPEG_BIN = get_ffmpeg_binary()
+FFMPEG_BIN = "ffmpeg"
+
+def check_ffmpeg_available():
+    """Verify the system FFmpeg installed through packages.txt and show useful diagnostics."""
+    import shutil as _shutil
+    import subprocess as _subprocess
+    ff = _shutil.which(FFMPEG_BIN)
+    if not ff:
+        return False, "FFmpeg tidak ditemukan. Pastikan packages.txt berisi: ffmpeg"
+    try:
+        p = _subprocess.run([ff, "-version"], capture_output=True, text=True, timeout=10)
+        first = (p.stdout or p.stderr).splitlines()
+        version = first[0] if first else "versi tidak terbaca"
+        return p.returncode == 0, f"{ff} | {version}"
+    except Exception as e:
+        return False, f"Gagal menjalankan FFmpeg: {e}"
 
 
 def safe_filename(name: str) -> str:
@@ -664,3 +678,16 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# FFmpeg system check (Streamlit Cloud)
+try:
+    _ff_ok, _ff_msg = check_ffmpeg_available()
+    if _ff_ok:
+        st.sidebar.success("FFmpeg system check ✓")
+        st.sidebar.caption(_ff_msg)
+    else:
+        st.sidebar.error("FFmpeg system check ✗")
+        st.sidebar.caption(_ff_msg)
+except Exception as _ff_diag_err:
+    pass
