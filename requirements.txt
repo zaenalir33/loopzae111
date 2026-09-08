@@ -1,2 +1,3 @@
-streamlit>=1.40.0
+streamlit
+ffmpeg-python
 gdown>=5.2.0
