@@ -11,7 +11,6 @@ ffmpeg_bin = os.path.join(temp_ffmpeg_dir, "ffmpeg")
 def prepare_ffmpeg():
     if not os.path.exists(ffmpeg_bin):
         os.makedirs(temp_ffmpeg_dir, exist_ok=True)
-        # Unduh biner Linux FFmpeg static 64-bit langsung ke /tmp
         cmd = (
             f"curl -sL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz "
             f"| tar -xJ -C {temp_ffmpeg_dir} --strip-components=1"
@@ -62,7 +61,6 @@ st.title("📹 YouTube Auto Live Streamer")
 col1, col2 = st.columns(2)
 
 with col1:
-    # Komponen Tombol Upload File Video
     uploaded_file = st.file_uploader("Upload File Video (MP4 / MKV / MOV)", type=["mp4", "mkv", "mov"])
 
 with col2:
@@ -76,7 +74,6 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
     elif uploaded_file is None:
         st.error("Harap upload file video terlebih dahulu!")
     else:
-        # Simpan file yang di-upload ke /tmp agar bisa dibaca oleh FFmpeg
         target_video_path = "/tmp/uploaded_video.mp4"
         with open(target_video_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -84,10 +81,10 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
         
+        # Susunan perintah FFmpeg yang sudah diperbaiki letak opsi reconnect-nya
         if shorts_mode:
             cmd = [
                 ffmpeg_bin, "-re", "-stream_loop", "-1",
-                "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
                 "-i", target_video_path,
                 "-vf", "scale=720:1280",
                 "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
@@ -98,7 +95,6 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
         else:
             cmd = [
                 ffmpeg_bin, "-re", "-stream_loop", "-1",
-                "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
                 "-i", target_video_path,
                 "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
                 "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
