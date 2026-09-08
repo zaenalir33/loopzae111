@@ -62,7 +62,8 @@ st.title("📹 YouTube Auto Live Streamer")
 col1, col2 = st.columns(2)
 
 with col1:
-    video_file = st.text_input("Nama File Video", "video.mp4")
+    # Komponen Tombol Upload File Video
+    uploaded_file = st.file_uploader("Upload File Video (MP4 / MKV / MOV)", type=["mp4", "mkv", "mov"])
 
 with col2:
     stream_key = st.text_input("YouTube Stream Key", type="password")
@@ -72,9 +73,14 @@ shorts_mode = st.checkbox("Mode Shorts (720x1280)")
 if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
     if not stream_key:
         st.error("Harap masukkan Stream Key YouTube terlebih dahulu!")
-    elif not os.path.exists(video_file):
-        st.error(f"File video '{video_file}' tidak ditemukan di repositori!")
+    elif uploaded_file is None:
+        st.error("Harap upload file video terlebih dahulu!")
     else:
+        # Simpan file yang di-upload ke /tmp agar bisa dibaca oleh FFmpeg
+        target_video_path = "/tmp/uploaded_video.mp4"
+        with open(target_video_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
         
@@ -82,7 +88,7 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
             cmd = [
                 ffmpeg_bin, "-re", "-stream_loop", "-1",
                 "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
-                "-i", video_file,
+                "-i", target_video_path,
                 "-vf", "scale=720:1280",
                 "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
                 "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
@@ -93,7 +99,7 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
             cmd = [
                 ffmpeg_bin, "-re", "-stream_loop", "-1",
                 "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
-                "-i", video_file,
+                "-i", target_video_path,
                 "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
                 "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
                 "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
@@ -104,7 +110,7 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
         add_script_run_ctx(thread)
         thread.start()
         
-        st.success("Proses streaming telah dijalankan di background!")
+        st.success("File berhasil diunggah & proses streaming berjalan di background!")
 
 st.divider()
 st.subheader("📋 Log Aktivitas Streaming")
