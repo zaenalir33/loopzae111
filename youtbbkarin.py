@@ -5,8 +5,10 @@ import static_ffmpeg
 import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 
-# 1. Inisialisasi biner ffmpeg secara otomatis di PATH
-static_ffmpeg.add_paths()
+# 1. Konfigurasi direktori pengunduhan ffmpeg agar memiliki izin tulis penuh
+temp_ffmpeg_dir = "/tmp/ffmpeg_bin"
+os.makedirs(temp_ffmpeg_dir, exist_ok=True)
+static_ffmpeg.add_paths(download_dir=temp_ffmpeg_dir)
 
 # 2. Inisialisasi Session State di alur utama Streamlit
 if 'logs' not in st.session_state:
@@ -60,6 +62,9 @@ with col1:
 with col2:
     stream_key = st.text_input("YouTube Stream Key", type="password", help="Masukkan Stream Key dari Dashboard YouTube Live Anda.")
 
+# Checkbox Mode Shorts
+shorts_mode = st.checkbox("Mode Shorts (720x1280)")
+
 # Tombol Eksekusi
 col_btn1, col_btn2 = st.columns([1, 4])
 
@@ -75,16 +80,30 @@ if start_btn:
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
         
-        # Perintah FFmpeg untuk streaming loop
-        cmd = [
-            "ffmpeg", "-re", "-stream_loop", "-1", "-i", video_file,
-            "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
-            "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
-            "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
-            "-f", "flv", rtmp_url
-        ]
+        # Opsi argumen FFmpeg berdasarkan pilihan Mode Shorts
+        if shorts_mode:
+            cmd = [
+                "ffmpeg", "-re", "-stream_loop", "-1",
+                "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
+                "-i", video_file,
+                "-vf", "scale=720:1280",
+                "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
+                "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
+                "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
+                "-f", "flv", rtmp_url
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-re", "-stream_loop", "-1",
+                "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1",
+                "-i", video_file,
+                "-c:v", "libx264", "-preset", "veryfast", "-b:v", "2500k",
+                "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60",
+                "-keyint_min", "60", "-c:a", "aac", "-b:a", "128k",
+                "-f", "flv", rtmp_url
+            ]
         
-        # Jalankan thread dengan ScriptRunContext agar aman di Streamlit
+        # Jalankan thread dengan ScriptRunContext
         thread = threading.Thread(target=run_ffmpeg, args=(cmd,), name="run_ffmpeg")
         add_script_run_ctx(thread)
         thread.start()
