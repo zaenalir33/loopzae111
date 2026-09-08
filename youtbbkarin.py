@@ -1,20 +1,27 @@
 import os
 import subprocess
 import threading
-import ffmpeg_downloader as ffdl
 import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 
-# 1. Unduh biner FFmpeg ke folder /tmp jika belum ada
+# 1. Unduh biner FFmpeg static langsung via curl/tar ke /tmp jika belum ada
 temp_ffmpeg_dir = "/tmp/ffmpeg_bin"
-os.makedirs(temp_ffmpeg_dir, exist_ok=True)
+ffmpeg_bin = os.path.join(temp_ffmpeg_dir, "ffmpeg")
 
-ffmpeg_executable = os.path.join(temp_ffmpeg_dir, "ffmpeg")
-if not os.path.exists(ffmpeg_executable):
-    ffdl.install(temp_ffmpeg_dir)
+def prepare_ffmpeg():
+    if not os.path.exists(ffmpeg_bin):
+        os.makedirs(temp_ffmpeg_dir, exist_ok=True)
+        # Unduh biner Linux FFmpeg static 64-bit langsung ke /tmp
+        cmd = (
+            f"curl -sL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz "
+            f"| tar -xJ -C {temp_ffmpeg_dir} --strip-components=1"
+        )
+        subprocess.run(cmd, shell=True, check=True)
+
+prepare_ffmpeg()
 
 # Masukkan folder /tmp/ffmpeg_bin ke PATH sistem
-os.environ["PATH"] += os.pathsep + temp_ffmpeg_dir
+os.environ["PATH"] = temp_ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
 # 2. Inisialisasi Session State
 if 'logs' not in st.session_state:
@@ -70,8 +77,6 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
     else:
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
-        
-        ffmpeg_bin = os.path.join(temp_ffmpeg_dir, "ffmpeg")
         
         if shorts_mode:
             cmd = [
