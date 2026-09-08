@@ -168,7 +168,7 @@ def start_process(cmd, mode):
     if process_running():
         st.error("Streaming masih berjalan. Hentikan streaming sebelumnya terlebih dahulu.")
         return False
-    LOG_FILE.write_text("Menjalankan perintah FFmpeg...\n" + " ".join(shlex.quote(x) for x in cmd) + "\n\n")
+    LOG_FILE.write_text("Menjalankan perintah FFmpeg...\n" + " ".join(shlex.quote(x) for x in cmd) + "\n\n", encoding="utf-8")
     with open(LOG_FILE, "a", buffering=1) as log:
         proc = subprocess.Popen(
             cmd,
@@ -217,7 +217,6 @@ def encoding_args(shorts=False):
         "-ar", "44100",
         "-ac", "2",
         "-af", "aresample=async=1:first_pts=0",
-        "-flvflags", "no_duration_filesize",
         "-f", "flv",
     ]
     if shorts:
@@ -252,8 +251,9 @@ stream_key = st.text_input("YouTube Stream Key", type="password")
 mode = st.radio("Mode Streaming", ["5 Video Playlist", "Video + MP3"], horizontal=True)
 
 if mode == "5 Video Playlist":
-    st.subheader("🎬 5 Video Playlist")
-    st.caption("Setiap video bisa Upload, Link langsung, atau Google Drive.")
+    st.subheader("🎬 Video Playlist")
+    st.caption("Pilih 1 video untuk loop satu video, atau 5 video untuk diputar berurutan.")
+
     video_paths = []
     for i in range(1, video_count + 1):
         with st.expander(f"Video {i}", expanded=(i == 1)):
@@ -261,34 +261,96 @@ if mode == "5 Video Playlist":
             if p:
                 video_paths.append(p)
 
-    repeat_option = st.radio("Pengulangan", ["Tanpa batas", "Jumlah pengulangan"], horizontal=True, key="video_repeat_mode")
+    repeat_option = st.radio(
+        "Pengulangan",
+        ["Tanpa batas", "Jumlah pengulangan"],
+        horizontal=True,
+        key="video_repeat_mode",
+    )
     if repeat_option == "Jumlah pengulangan":
-        repeat = st.number_input("Jumlah putaran playlist", min_value=1, max_value=100000, value=1, step=1, key="video_repeat")
+        repeat = st.number_input(
+            "Jumlah putaran",
+            min_value=1,
+            max_value=100000,
+            value=1,
+            step=1,
+            key="video_repeat",
+        )
     else:
         repeat = None
+
     shorts = st.checkbox("Mode Shorts 720×1280", key="video_shorts")
 
-    if st.button("🚀 Mulai 5 Video", disabled=running, type="primary"):
+    if st.button(
+        "🚀 Mulai 1 Video" if video_count == 1 else "🚀 Mulai 5 Video",
+        disabled=running,
+        type="primary",
+    ):
         if not stream_key:
             st.error("Masukkan Stream Key YouTube.")
-        elif len(video_paths) != 5:
-            st.error("Isi semua 5 video terlebih dahulu.")
+        elif len(video_paths) != video_count:
+            st.error(f"Isi {video_count} video terlebih dahulu.")
         else:
-            playlist = BASE / "video_playlist.txt"
-            if repeat is None:
-                lines = []
-                for p in video_paths:
-                    lines.append("file " + shlex.quote(os.path.abspath(p)))
-                playlist.write_text("\n".join(lines) + "\n")
-                loop_args = ["-stream_loop", "-1"]
+            if video_count == 1:
+                # Paling stabil untuk satu video: jangan lewat concat demuxer.
+                cmd = [
+                    FFMPEG, "-hide_banner", "-loglevel", "info",
+                    "-re",
+                    "-thread_queue_size", "512",
+                ]
+                if repeat is None:
+                    cmd += ["-stream_loop", "-1"]
+                elif int(repeat) > 1:
+                    cmd += ["-stream_loop", str(int(repeat) - 1)]
+                cmd += [
+                    "-i", video_paths[0],
+                    "-map", "0:v:0",
+                    "-map", "0:a:0?",
+                ]
+                cmd += encoding_args(shorts) + [
+                    "-rtmp_live", "live",
+                    "-flvflags", "no_duration_filesize",
+                    rtmp_url(stream_key),
+                ]
             else:
-                playlist_path = write_concat_file(video_paths, int(repeat), "video_playlist_repeat.txt")
-                playlist = Path(playlist_path)
-                loop_args = []
-            cmd = [FFMPEG, "-hide_banner", "-loglevel", "info", "-re", "-thread_queue_size", "512", "-f", "concat", "-safe", "0"] + loop_args + ["-i", str(playlist)]
-            cmd += encoding_args(shorts) + [rtmp_url(stream_key)]
-            if start_process(cmd, "5 Video Playlist"):
-                st.success("Streaming 5 Video sudah dimulai. Jangan tutup/redeploy aplikasi.")
+                if repeat is None:
+                    playlist = BASE / "video_playlist.txt"
+                    playlist.write_text(
+                        "\n".join(
+                            "file " + shlex.quote(os.path.abspath(p))
+                            for p in video_paths
+                        ) + "\n"
+                    )
+                    loop_args = ["-stream_loop", "-1"]
+                else:
+                    playlist = Path(
+                        write_concat_file(
+                            video_paths, int(repeat), "video_playlist_repeat.txt"
+                        )
+                    )
+                    loop_args = []
+
+                cmd = [
+                    FFMPEG, "-hide_banner", "-loglevel", "info",
+                    "-re",
+                    "-thread_queue_size", "512",
+                    "-f", "concat", "-safe", "0",
+                ] + loop_args + [
+                    "-i", str(playlist),
+                    "-map", "0:v:0",
+                    "-map", "0:a:0?",
+                ]
+                cmd += encoding_args(shorts) + [
+                    "-rtmp_live", "live",
+                    "-flvflags", "no_duration_filesize",
+                    rtmp_url(stream_key),
+                ]
+
+            if start_process(
+                cmd,
+                "1 Video" if video_count == 1 else "5 Video Playlist",
+            ):
+                st.success("FFmpeg sudah dijalankan. Tunggu YouTube menerima sinyal live.")
 
 else:
     st.subheader("🎵 Video + MP3")
