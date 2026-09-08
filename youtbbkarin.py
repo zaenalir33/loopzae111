@@ -1,15 +1,14 @@
 import os
 import subprocess
 import threading
-import ffdl
+import ffmpeg_downloader as ffdl
 import streamlit as st
 from streamlit.runtime.scriptrunner import add_script_run_ctx
 
-# 1. Unduh biner FFmpeg langsung ke folder /tmp tanpa PermissionError/Lockfile
+# 1. Unduh biner FFmpeg ke folder /tmp jika belum ada
 temp_ffmpeg_dir = "/tmp/ffmpeg_bin"
 os.makedirs(temp_ffmpeg_dir, exist_ok=True)
 
-# Cek apakah biner ffmpeg sudah ada di /tmp, jika belum maka unduh otomatis
 ffmpeg_executable = os.path.join(temp_ffmpeg_dir, "ffmpeg")
 if not os.path.exists(ffmpeg_executable):
     ffdl.install(temp_ffmpeg_dir)
@@ -25,12 +24,10 @@ if 'streaming' not in st.session_state:
     st.session_state['streaming'] = False
 
 def log_callback(msg):
-    """Callback aman untuk memperbarui log di session_state."""
     if 'logs' in st.session_state:
         st.session_state['logs'].append(msg)
 
 def run_ffmpeg(cmd):
-    """Menjalankan proses FFmpeg di background thread."""
     try:
         log_callback("Menjalankan perintah FFmpeg...")
         process = subprocess.Popen(
@@ -51,7 +48,7 @@ def run_ffmpeg(cmd):
         if 'streaming' in st.session_state:
             st.session_state['streaming'] = False
 
-# --- Tampilan Antarmuka Streamlit ---
+# --- Antarmuka Streamlit ---
 st.set_page_config(page_title="YouTube Live Streamer", layout="wide")
 st.title("📹 YouTube Auto Live Streamer")
 
@@ -74,7 +71,6 @@ if st.button("🚀 Mulai Streaming", disabled=st.session_state['streaming']):
         st.session_state['streaming'] = True
         rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{stream_key}"
         
-        # Lokasi penuh biner ffmpeg yang telah diunduh di /tmp
         ffmpeg_bin = os.path.join(temp_ffmpeg_dir, "ffmpeg")
         
         if shorts_mode:
