@@ -7,6 +7,11 @@ import urllib.request
 import urllib.parse
 from pathlib import Path
 
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
+
 # Install streamlit jika belum ada
 try:
     import streamlit as st
@@ -22,6 +27,23 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 # Dipakai agar tombol Stop bisa menghentikan proses FFmpeg yang sedang aktif.
 FFMPEG_PROCESS = None
 PROCESS_LOCK = threading.Lock()
+
+
+def get_ffmpeg_binary() -> str:
+    """Return a working FFmpeg binary without relying on packages.txt/apt."""
+    if imageio_ffmpeg is not None:
+        try:
+            path = imageio_ffmpeg.get_ffmpeg_exe()
+            if path and Path(path).exists():
+                return path
+        except Exception:
+            pass
+
+    # Fallback for local Windows/Linux installations.
+    return "ffmpeg"
+
+
+FFMPEG_BIN = get_ffmpeg_binary()
 
 
 def safe_filename(name: str) -> str:
@@ -151,7 +173,7 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
             audio_loop_args = ["-stream_loop", "-1"]
 
         cmd = [
-            "ffmpeg",
+            FFMPEG_BIN,
             "-hide_banner",
             "-loglevel", "info",
             "-thread_queue_size", "256",
@@ -231,6 +253,7 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
         else:
             log_callback("MP3: 1 → 2 → 3 → 4 → 5 → kembali ke 1, loop terus.")
         log_callback("Video di-loop terus; audio asli video tidak digunakan.")
+        log_callback(f"FFmpeg binary: {FFMPEG_BIN}")
         log_callback("Menjalankan FFmpeg ke YouTube...")
 
     else:
@@ -242,7 +265,7 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
         playlist_repeat = repeat_count if playback_mode == "Jumlah pengulangan" else 1
         playlist = make_concat_playlist(video_paths, playlist_repeat)
         cmd = [
-            "ffmpeg",
+            FFMPEG_BIN,
             "-hide_banner",
             "-re",
         ]
@@ -296,6 +319,7 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
             log_callback(f"Playlist 5 Video diputar tepat {repeat_count} kali, lalu streaming berhenti.")
         elif playback_mode == "Durasi streaming":
             log_callback(f"Streaming dibatasi {duration_hours:g} jam.")
+        log_callback(f"FFmpeg binary: {FFMPEG_BIN}")
         log_callback("Menjalankan FFmpeg ke YouTube...")
 
     try:
@@ -316,7 +340,7 @@ def run_ffmpeg(mode, video_paths, audio_paths, stream_key, is_shorts, playback_m
         process.wait()
         log_callback(f"FFmpeg berhenti dengan kode: {process.returncode}")
     except FileNotFoundError:
-        log_callback("ERROR: FFmpeg tidak ditemukan. Pastikan FFmpeg sudah terpasang dan tersedia di PATH.")
+        log_callback("ERROR: FFmpeg tidak ditemukan. Pastikan imageio-ffmpeg terpasang atau FFmpeg tersedia di PATH.")
     except Exception as e:
         log_callback(f"Error: {e}")
     finally:
