@@ -12,6 +12,14 @@ import streamlit as st
 st.set_page_config(page_title="YouTube Live Streamer", layout="wide")
 st.title("📹 YouTube Auto Live Streamer")
 
+video_count = st.radio(
+    "Jumlah video",
+    [1, 5],
+    format_func=lambda x: "1 Video" if x == 1 else "5 Video Playlist",
+    horizontal=True,
+    key="video_count",
+)
+
 BASE = Path("/tmp/youtube_streamer")
 UPLOAD_DIR = BASE / "uploads"
 LOG_FILE = BASE / "ffmpeg.log"
@@ -247,7 +255,7 @@ if mode == "5 Video Playlist":
     st.subheader("🎬 5 Video Playlist")
     st.caption("Setiap video bisa Upload, Link langsung, atau Google Drive.")
     video_paths = []
-    for i in range(1, 6):
+    for i in range(1, video_count + 1):
         with st.expander(f"Video {i}", expanded=(i == 1)):
             p = source_widget(f"File Video {i}", f"video{i}", ["mp4", "mkv", "mov", "webm"])
             if p:
